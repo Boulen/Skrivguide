@@ -470,7 +470,14 @@ var driveErrorItems = [], driveErrorSeq = 0;
 function showDriveError(context, e, retryFn) {
   var msg = (e && e.message) || String(e || "Okänt fel");
   var hint = "";
-  if (e && e.status === 403) hint = "Behörighet saknas. Appen ser bara mappar den själv skapat (drive.file).";
+  if (e && e.status === 403) {
+    var dt = String((e && e.detail) || "");
+    if (/accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(dt))
+      hint = "Google Drive API är inte aktiverat i Google Cloud-projektet. Aktivera det under APIs & Services → Library → Google Drive API → Enable, vänta någon minut och försök igen.";
+    else if (/insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient authentication scopes/i.test(dt))
+      hint = "Drive-behörigheten godkändes inte vid inloggningen. Logga ut, logga in igen och kryssa i rutan för Google Drive på Googles godkännandesida.";
+    else hint = "Behörighet saknas (HTTP 403). Se tekniska detaljer nedan.";
+  }
   else if (e && e.status === 401) hint = "Sessionen har gått ut. Ladda om sidan eller logga in igen.";
   console.error("Drive-fel [" + context + "]", e);
   var dup = driveErrorItems.find(function (x) { return x.context === context && x.msg === msg; });
@@ -484,7 +491,8 @@ function renderDriveErrors() {
   if (!banner) { banner = document.createElement("div"); banner.id = "drive-error-banner"; banner.setAttribute("role", "alert"); document.body.appendChild(banner); }
   banner.innerHTML = driveErrorItems.map(function (x) {
     return "<div class='derr-row'><div class='derr-text'><b>" + esc(x.context) + "</b>" + (x.count > 1 ? " (" + x.count + " ggr)" : "") + ": " + esc(x.msg)
-      + (x.hint ? "<div class='derr-hint'>" + esc(x.hint) + "</div>" : "") + "</div>"
+      + (x.hint ? "<div class='derr-hint'>" + esc(x.hint) + "</div>" : "")
+      + (x.detail ? "<div class='derr-hint' style='font-size:11px;opacity:.75;word-break:break-all'>" + esc(String(x.detail).replace(/\s+/g, " ").slice(0, 260)) + "</div>" : "") + "</div>"
       + (x.retryFn ? "<button type='button' class='action-btn' data-derr-retry='" + x.id + "'>Försök igen</button>" : "")
       + "<button type='button' class='action-btn' data-derr-close='" + x.id + "' title='Stäng'>✕</button></div>";
   }).join("");
