@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Skrivguide</title>
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+
+<!-- PWA / "Lägg till på hemskärmen" -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Skrivguide">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<script>
+if("serviceWorker" in navigator){
+  window.addEventListener("load",function(){
+    navigator.serviceWorker.register("service-worker.js").catch(function(){});
+  });
+}
+</script>
+
+<!-- Fångar Googles engångskod (eller felkod) efter inloggning, innan något annat körs -->
+<script>
+(function(){
+  var p=new URLSearchParams(location.search);
+  var code=p.get("code"), err=p.get("error");
+  if(code){window.__pendingAuthCode=code;}
+  if(err){window.__pendingAuthError=err;}
+  if(code||err)history.replaceState(null,"",location.pathname);
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div id="login-screen" class="login-screen" style="display:block">
+    <div style="font-size:52px;margin-bottom:20px">✍️</div>
+    <div class="login-title">Skrivguide</div>
+    <div class="login-sub">Logga in med Google för att spara och synka mellan enheter.</div>
+    <button type="button" class="login-btn" onclick="startLogin()">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Logga in med Google
+    </button>
+    <button type="button" class="sec ghost" id="install-login" style="display:none;max-width:260px;margin:16px auto 0">📲 Installera som app</button>
+    <div id="debug-msg" style="margin-top:20px;font-size:11px;color:var(--sub);"></div>
+  </div>
+  <div id="main-app" style="display:none">
+    <div class="hdr">
+      <div class="hdr-info"><div class="hdr-title" id="htitle"></div></div>
+      <div class="header-actions">
+        <!-- Flik-knapparna byggs av core.js ur registerTab() -->
+        <div class="tabs" id="tabs" style="-webkit-overflow-scrolling:touch;"></div>
+        <span id="global-load-spinner" class="spnr" style="width:14px;height:14px;border-width:2px;display:none;flex-shrink:0"></span>
+        <button type="button" class="gear-btn" onclick="openSettings()" title="Inställningar" aria-label="Inställningar">⚙</button>
+      </div>
+    </div>
+    <div class="body" id="body"></div>
+  </div>
+</div>
+
+<!-- Scriptordning: core först, sedan fast rad, sedan flikarna, sist init().
+     Varje flikfil anropar registerTab() när den laddas. -->
+<script src="js/core.js"></script>
+<script src="js/sokbar.js"></script>
+<script src="js/skrivhjalp.js"></script>
+<!-- Fler flikar läggs in här, en rad per flik, när deras chattar levererat:
+<script src="js/skriv.js"></script>
+<script src="js/sammanfatta.js"></script>
+<script src="js/anteckningar.js"></script>
+-->
+<script>
+init();
+</script>
+</body>
+</html>
