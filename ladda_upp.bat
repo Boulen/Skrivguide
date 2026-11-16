@@ -78,16 +78,21 @@ echo [6/7] Laddar upp till GitHub. Ett inloggningsfonster kan oppnas, logga in d
 git push -u origin main
 if errorlevel 1 (
   echo.
-  echo Uppladdningen avvisades. Forsoker hamta det som redan finns pa GitHub och sla ihop...
-  git pull origin main --rebase --allow-unrelated-histories >> "%LOG%" 2>&1
-  if errorlevel 1 (
-    git rebase --abort >nul 2>&1
-    echo FEL: Det gick inte att sla ihop automatiskt.
+  echo GitHub har andra filer an din mapp, till exempel fran en tidigare uppladdning pa webben.
+  echo Din mapp pa datorn ar den kompletta versionen.
+  echo Vill du ersatta innehallet pa GitHub med innehallet i den har mappen?
+  choice /c JN /m "Skriv J for ja eller N for nej"
+  if errorlevel 2 (
+    echo Avbrutet. Inget har andrats pa GitHub.
     goto :fel
   )
-  echo [7/7] Forsoker ladda upp igen...
-  git push -u origin main
-  if errorlevel 1 goto :fel
+  echo [7/7] Ersatter innehallet pa GitHub...
+  git fetch origin >> "%LOG%" 2>&1
+  git push -u origin main --force-with-lease
+  if errorlevel 1 (
+    git push -u origin main --force
+    if errorlevel 1 goto :fel
+  )
 )
 
 echo.

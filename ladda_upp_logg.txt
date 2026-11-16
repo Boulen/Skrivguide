@@ -1,3 +1,5 @@
-=== Start 2026-11-16  4:13:11,55 === 
+=== Start 2026-11-16  4:15:12,61 === 
 git version 2.56.1.windows.1
-Switched to a new branch 'main'
+Reset branch 'main'
+M	ladda_upp.bat
+M	ladda_upp_logg.txt
