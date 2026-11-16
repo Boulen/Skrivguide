@@ -1,5 +1,6 @@
-=== Start 2026-11-16  4:15:12,61 === 
+=== Start 2026-11-16  4:18:55,44 === 
 git version 2.56.1.windows.1
 Reset branch 'main'
-M	ladda_upp.bat
+M	js/core.js
 M	ladda_upp_logg.txt
+Your branch is up to date with 'origin/main'.

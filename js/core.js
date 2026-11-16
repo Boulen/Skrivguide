@@ -93,7 +93,7 @@
 var APP_ID = "skrivguide";                 // skickas som app:"…" till proxyns oauth/token
 var APP_NAME = "Skrivguide";
 var PROXY = "https://ai-proxy.jenseskilsson95.workers.dev/";
-var CLIENT_ID = "BYT_MOT_NYTT_KLIENT_ID.apps.googleusercontent.com";
+var CLIENT_ID = "408182332310-mjugit96ke2ksoh5t94jrd50b0n6c5k7.apps.googleusercontent.com";
 var SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile";
 var APP_ROOT_FOLDER_NAME = "Skrivguide";   // skapas av appen i användarens Drive
 var REDIRECT_URI = location.origin + location.pathname.replace(/\/+$/, "/");
