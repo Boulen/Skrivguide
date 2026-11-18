@@ -30,9 +30,13 @@ var skrivhjalpPresetsReadFailed = false;
 var skrivhjalpItems = [];
 var skrivhjalpReadFailed = false;
 var skrivhjalpDraft = { text: "", mode: "omformulera", opts: {}, extra: "" };
-var skrivhjalpResult = null;       // {mode, modeLabel, input, output, changes, error}
+var skrivhjalpResult = null;       // {id, mode, modeLabel, input, task, output, changes, info, chat:[{role,content,updated?}], error}
 var skrivhjalpBusy = false;
 var skrivhjalpRunId = 0;
+var skrivhjalpChatBusy = false;    // väntar på svar på en följdfråga
+var skrivhjalpChatRun = 0;         // avbryter inaktuella följdsvar
+var skrivhjalpChatDraft = "";      // texten i chattrutan under resultatet
+var SKRIVHJALP_CHAT_MAX = 40;      // max antal chattmeddelanden som sparas per körning
 
 var SKRIVHJALP_MODES = [
   { id: "omformulera", icon: "✏️", label: "Omformulera", verb: "Omformulera",
@@ -254,22 +258,25 @@ function skrivhjalpBuildPrompt(m, text) {
       + "\nSvara i exakt detta format:\nUTKAST:\n<ett första, användbart utkast byggt på det användaren skrivit, med tydliga platshållare i [hakparentes] där information saknas>\n\n"
       + "FUNDERA PÅ:\n<två till fyra korta frågor eller tips som hjälper användaren göra texten bättre och mer personlig>\n\n"
       + "Hitta inte på fakta om användaren.\n\nANVÄNDARENS IDÉER:\n" + text;
-    return { sys: sys, user: user };
+    return { sys: sys, user: user, task: "Skriv " + (opt ? opt.instr : "en text") + (extra ? "\n" + extra : "") };
   }
   sys = SKRIVHJALP_SYS;
   var instr = m.instr + (opt ? " " + opt.instr : "") + (extra ? "\n" + extra : "");
   if (m.id === "ratta") {
     sys += " Svara bara med den rättade texten, sedan en rad med exakt ###ÄNDRINGAR och därefter en kort punktlista (högst 8 punkter) över de viktigaste ändringarna. Fanns inga fel: skriv texten oförändrad och punkten 'Inga fel hittades.'.";
   } else {
-    sys += " Svara endast med den färdiga texten, utan inledning, rubriker eller kommentarer.";
+    sys += " Svara med den färdiga texten, utan inledning, rubriker eller kommentarer.";
   }
+  sys += " Behöver du dessutom säga något till användaren (till exempel ett antagande du gjort, att information saknas eller en fråga) skriver du det allra sist efter en rad med exakt ###INFO. Behövs inget sådant skriver du ingen ###INFO.";
   user = instr + "\n\nTEXT:\n" + text;
-  return { sys: sys, user: user };
+  return { sys: sys, user: user, task: instr };
 }
 
 // Delar upp svaret i huvudtext och ändringar (Rätta) eller utkast och frågor (Guida).
 function skrivhjalpSplitReply(m, raw) {
-  var out = String(raw || "").trim(), changes = "";
+  var out = String(raw || "").trim(), changes = "", info = "";
+  var im = out.match(/^[ \t]*#{3}[ \t]*INFO[ \t]*:?[ \t]*$/im);   // ###INFO = meddelande från AI, bara vid behov
+  if (im) { info = out.slice(im.index + im[0].length).trim(); out = out.slice(0, im.index).trim(); }
   if (m.id === "ratta") {
     var parts = out.split(/\n?\s*#{3}\s*ÄNDRINGAR\s*:?\s*\n?/i);
     out = (parts[0] || "").trim();
@@ -279,7 +286,21 @@ function skrivhjalpSplitReply(m, raw) {
     out = (g[0] || "").replace(/^\s*UTKAST\s*:?\s*\n?/i, "").trim();
     changes = (g[1] || "").trim();
   }
-  return { output: out || String(raw || "").trim(), changes: changes };
+  return { output: out || String(raw || "").trim(), changes: changes, info: info };
+}
+
+// Följdsvar: ###RESULTAT = ny hel text som ersätter resultatet, ###INFO = meddelande till användaren.
+// Saknas markörer tolkas hela svaret som ett meddelande, så resultatet aldrig skrivs över av misstag.
+function skrivhjalpParseSections(raw) {
+  var sec = {}, cur = null, buf = [], any = false;
+  String(raw || "").split(/\r?\n/).forEach(function (line) {
+    var mm = line.match(/^\s*#{3}\s*(RESULTAT|INFO)\s*:?\s*$/i);
+    if (mm) { if (cur) sec[cur] = buf.join("\n").trim(); cur = mm[1].toUpperCase(); buf = []; any = true; }
+    else buf.push(line);
+  });
+  if (cur) sec[cur] = buf.join("\n").trim();
+  if (!any) return { result: "", info: String(raw || "").trim() };
+  return { result: sec.RESULTAT || "", info: sec.INFO || "" };
 }
 
 // ---------------------------------------------------------------- Körning
@@ -297,6 +318,7 @@ async function skrivhjalpRun() {
   var myRun = ++skrivhjalpRunId;
   skrivhjalpBusy = true;
   skrivhjalpResult = null;
+  skrivhjalpChatRun++; skrivhjalpChatBusy = false; skrivhjalpChatDraft = "";
   skrivhjalpPaintControls();
   skrivhjalpPaintResult();
   var raw = null, errMsg = "";
@@ -318,7 +340,7 @@ async function skrivhjalpRun() {
   var now = new Date().toISOString();
   var opt = m.opts ? m.opts.items[skrivhjalpOptIndex(m)] : null;
   var item = { id: skrivhjalpNewId(), mode: m.id, modeLabel: m.label + (opt ? " · " + opt.label : ""),
-    input: text, output: parts.output, changes: parts.changes, createdAt: now, updatedAt: now };
+    input: text, task: p.task, output: parts.output, changes: parts.changes, info: parts.info, chat: [], createdAt: now, updatedAt: now };
   skrivhjalpResult = item;
   skrivhjalpPaintControls();
   skrivhjalpPaintResult();
@@ -328,11 +350,66 @@ async function skrivhjalpRun() {
 // Shift+Enter klickar på huvudknappen (kör valt läge) i varje textruta på fliken.
 // REGEL: varje ny textruta/inmatningsfält på Skrivhjälp ska anropa den här hjälparen.
 // addEventListener (inte onkeydown) så andra tangenthanterare på samma fält inte skrivs över.
-function skrivhjalpBindShiftEnter(el) {
+function skrivhjalpBindShiftEnter(el, fn) {
   if (!el) return;
   el.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); skrivhjalpRun(); }
+    if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); (fn || skrivhjalpRun)(); }
   });
+}
+
+// ---- Chatt under resultatet: fortsätt prata med AI, som även kan ändra resultatrutan ----
+var SKRIVHJALP_FOLLOW_SYS = SKRIVHJALP_SYS
+  + " Användaren har fått ett resultat och fortsätter nu samtalet med dig. Du kan göra två saker. "
+  + "(1) Ändra resultatet: skriv då HELA den nya texten efter en rad med exakt ###RESULTAT. "
+  + "(2) Säga något till användaren (svara på en fråga, förklara, fråga tillbaka): skriv det efter en rad med exakt ###INFO. "
+  + "Använd bara det som behövs. Ändrar du inte resultatet ska du inte skriva ###RESULTAT. Skriv ingenting utanför dessa avsnitt. "
+  + "Du kan använda båda när det passar, till exempel ändra texten och kort säga vad du ändrade.";
+
+async function skrivhjalpFollowUp() {
+  var r = skrivhjalpResult;
+  var txt = skrivhjalpChatDraft.trim();
+  if (!r || r.error || !r.output || skrivhjalpChatBusy || skrivhjalpBusy || !txt) return;
+  skrivhjalpChatDraft = "";
+  var chat = (r.chat || []).concat([{ role: "user", content: txt }]).slice(-SKRIVHJALP_CHAT_MAX);
+  var cur = Object.assign({}, r, { chat: chat });
+  skrivhjalpResult = cur;
+  var myChat = ++skrivhjalpChatRun;
+  skrivhjalpChatBusy = true;
+  skrivhjalpPaintResult(true);
+  var msgs = chat.slice(-9).map(function (c) { return { role: c.role, content: c.content }; });
+  while (msgs.length && msgs[0].role !== "user") msgs.shift();
+  var ctx = "UPPGIFT SOM GAV RESULTATET: " + (cur.task || "(okänd)") + "\n\nORIGINALTEXT:\n" + (cur.input || "")
+    + "\n\nNUVARANDE RESULTAT (det användaren ser i resultatrutan):\n" + cur.output;
+  var raw = null, errMsg = "";
+  try {
+    raw = await aiChatRetry(SKRIVHJALP_FOLLOW_SYS, msgs, Math.min(4000, 800 + cur.output.length + txt.length), {
+      maxAttempts: 3, context: ctx,
+      isActive: function () { return myChat === skrivhjalpChatRun; }
+    });
+  } catch (e) { errMsg = (e && e.message) || "Okänt fel"; }
+  if (myChat !== skrivhjalpChatRun) return;   // annan körning, annat resultat eller utloggning
+  skrivhjalpChatBusy = false;
+  var now = new Date().toISOString();
+  var next;
+  if (!raw) {
+    next = Object.assign({}, cur, { chat: chat.concat([{ role: "assistant", content: "Kunde inte få ett svar" + (errMsg ? " (" + errMsg + ")" : "") + ". Försök igen.", error: true }]) });
+    skrivhjalpResult = next;
+    skrivhjalpPaintResult(true);
+    return;
+  }
+  var sec = skrivhjalpParseSections(raw);
+  var updated = !!sec.result;
+  var say = sec.info || (updated ? "Resultatet är uppdaterat." : "Jag har inget att ändra eller tillägga.");
+  next = Object.assign({}, cur, {
+    output: updated ? sec.result : cur.output,
+    changes: updated ? "" : cur.changes,   // gamla ändrings-/infotexter gäller inte längre efter en ändring
+    info: updated ? "" : cur.info,
+    chat: chat.concat([{ role: "assistant", content: say, updated: updated }]).slice(-SKRIVHJALP_CHAT_MAX),
+    updatedAt: now
+  });
+  skrivhjalpResult = next;
+  skrivhjalpPaintResult(true);
+  skrivhjalpSaveItem(next);
 }
 
 // ---------------------------------------------------------------- Ritning
@@ -495,7 +572,7 @@ function skrivhjalpPaintControls() {
   }
 }
 
-function skrivhjalpPaintResult() {
+function skrivhjalpPaintResult(keepChatFocus) {
   var el = document.getElementById("skrivhjalp-result");
   if (!el) return;
   var r = skrivhjalpResult;
@@ -509,11 +586,34 @@ function skrivhjalpPaintResult() {
     h += "<div class='lbl'>" + (isGuide ? "Fundera på" : (isFix ? "Ändringar" : "Kommentar")) + "</div>"
       + "<div class='orig' style='font-style:normal;white-space:pre-wrap'>" + esc(r.changes) + "</div>";
   }
+  if (r.info) {
+    h += "<div class='lbl'>Info från AI</div>"
+      + "<div class='orig' style='font-style:normal;white-space:pre-wrap;border-left-color:var(--gold)'>" + esc(r.info) + "</div>";
+  }
   h += "<div class='row' style='flex-wrap:wrap'>"
     + "<button type='button' class='action-btn' id='skrivhjalp-copy'>📋 Kopiera</button>"
     + "<button type='button' class='action-btn' id='skrivhjalp-reuse'>↩ Använd som ny text</button></div>"
     + "<div class='copy-ok' id='skrivhjalp-copyok'>Kopierad!</div>";
+  // Chatt: tidigare följdfrågor och svar, sedan inmatningsrutan
+  var thread = (r.chat || []).map(function (c) {
+    return c.role === "user"
+      ? "<div style='display:flex;justify-content:flex-end;margin-bottom:8px'><div class='bubble-me'>" + esc(c.content) + "</div></div>"
+      : "<div style='display:flex;justify-content:flex-start;margin-bottom:8px'><div class='bubble-them'" + (c.error ? " style='color:var(--error)'" : "") + ">" + esc(c.content)
+        + (c.updated ? "<div class='kmeta' style='margin-top:6px'>✓ Resultatet ändrades</div>" : "") + "</div></div>";
+  }).join("");
+  h += "<div class='lbl' style='margin-top:14px'>Fortsätt chatta</div>"
+    + (thread ? "<div style='margin-bottom:8px'>" + thread + "</div>" : "")
+    + "<div class='row' style='align-items:flex-end'>"
+    + "<textarea class='inp' id='skrivhjalp-chat-inp' rows='1' maxlength='2000' placeholder='Be AI ändra resultatet eller ställ en fråga... (Shift+Enter skickar)' style='resize:none;overflow:hidden;min-height:44px;line-height:1.5;font-family:inherit'>" + esc(skrivhjalpChatDraft) + "</textarea>"
+    + "<button type='button' class='abtn' id='skrivhjalp-chat-btn' title='Skicka'" + (skrivhjalpChatBusy ? " disabled" : "") + ">&#8594;</button></div>"
+    + (skrivhjalpChatBusy ? "<div style='color:var(--sub);font-size:12px;margin-top:2px'>Skriver...</div>" : "");
   el.innerHTML = h;
+  var chatInp = el.querySelector("#skrivhjalp-chat-inp");
+  autoGrowTextarea(chatInp);
+  chatInp.oninput = function () { skrivhjalpChatDraft = chatInp.value; };
+  skrivhjalpBindShiftEnter(chatInp, skrivhjalpFollowUp);
+  el.querySelector("#skrivhjalp-chat-btn").onclick = skrivhjalpFollowUp;
+  if (keepChatFocus) chatInp.focus();
   el.querySelector("#skrivhjalp-copy").onclick = function () {
     copyText(r.output);
     var ok = document.getElementById("skrivhjalp-copyok");
@@ -522,6 +622,7 @@ function skrivhjalpPaintResult() {
   el.querySelector("#skrivhjalp-reuse").onclick = function () {
     skrivhjalpDraft.text = r.output;
     skrivhjalpResult = null;
+    skrivhjalpChatRun++; skrivhjalpChatBusy = false; skrivhjalpChatDraft = "";
     var ta = document.getElementById("skrivhjalp-text");
     if (ta) { ta.value = r.output; ta.dispatchEvent(new Event("input")); ta.focus(); }
     skrivhjalpPaintResult();
@@ -550,7 +651,8 @@ function skrivhjalpPaintHistory() {
       var known = skrivhjalpModes.some(function (x) { return x.id === it.mode; });
       skrivhjalpDraft.text = it.input || "";
       if (known) skrivhjalpDraft.mode = it.mode;
-      skrivhjalpResult = it;
+      skrivhjalpResult = Object.assign({}, it, { chat: (it.chat || []).slice() });
+      skrivhjalpChatRun++; skrivhjalpChatBusy = false; skrivhjalpChatDraft = "";
       var ta = document.getElementById("skrivhjalp-text");
       if (ta) { ta.value = skrivhjalpDraft.text; ta.dispatchEvent(new Event("input")); ta.placeholder = skrivhjalpMode(skrivhjalpDraft.mode).placeholder; }
       skrivhjalpPaintControls();
@@ -826,4 +928,7 @@ onSignOut(function () {
   skrivhjalpDraft = { text: "", mode: "omformulera", opts: {}, extra: "" };
   skrivhjalpResult = null;
   skrivhjalpBusy = false;
+  skrivhjalpChatRun++;
+  skrivhjalpChatBusy = false;
+  skrivhjalpChatDraft = "";
 });
