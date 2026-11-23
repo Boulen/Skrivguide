@@ -69,12 +69,8 @@
 // tog för mycket plats på smala skärmar. searchDictionaryImage/searchDictionaryTextFile
 // och all kamera-kod för dict-baren är borttagna i samma veva (använd AI-chattens
 // bifogning/kamera istället). (2) 👓 (genväg till sparade sökningar) och 📖 (Läshjälp)
-// är slagna ihop till EN knapp med en "dropup"-meny (samma idé som en dropdown, fast
-// öppnas uppåt eftersom knappen sitter längst ner på skärmen) - se
-// "---- Läshjälp/historik: dropup-meny ----"-blocket och initLashjalpDropup() nedan.
-// Själva knapparna (id lashjalpBtn/lashjalpHistoryShortcutBtn) och deras onclick-
-// bindning i initLashjalp() är oförändrade, de ligger bara inuti menyn nu istället för
-// direkt i raden.
+// slogs ihop till EN knapp med en "dropup"-meny (den menyn är sedan 2026-11-23 borttagen
+// igen: 📖 och 👓 är åter direkta knappar i raden, id lashjalpBtn/lashjalpHistoryShortcutBtn).
 //
 // NYTT (2026-08-31, ännu mer): (1) Sparade sökningar-korten är kompaktare - redigera/
 // ta bort ligger nu på SAMMA rad som titeln (istället för en egen rad ovanför), och
@@ -112,6 +108,8 @@ var LASHJALP_CSS = ""
   +".lashjalp-row input[type=text]{flex:1;min-width:0;padding:10px 12px;border-radius:5px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text-bright);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;}"
   +".lashjalp-row select{padding:8px 10px;border-radius:5px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text-bright);font-family:'JetBrains Mono',monospace;font-size:12.5px;outline:none;}"
   +".lashjalp-row textarea:focus,.lashjalp-row input:focus,.lashjalp-row select:focus{border-color:var(--main);}"
+  // NYTT (2026-11-23): Ord- och kommentarfälten är textareor (Enter = ny rad, Skift+Enter = skicka). De börjar på en rads höjd och växer i JS (sokbarGrow) upp till 140px.
+  +".lashjalp-row textarea.lashjalp-grow{min-height:0;max-height:140px;resize:none;overflow-y:auto;line-height:normal;}"
   // NYTT (2026-09-02): aiChatInput bytt från <input> till <textarea> för flerradigt
   // meddelande (se markup nedan + keydown-hanteraren i initAiChat()). Den generella
   // ".lashjalp-row textarea"-regeln ovan har min-height:70px, vilket vore en rejäl
@@ -133,13 +131,13 @@ var LASHJALP_CSS = ""
   +"#aiChatInput{display:block;width:100%;box-sizing:border-box;min-height:0;max-height:140px;padding:10px 12px;border-radius:5px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text-bright);font-family:'JetBrains Mono',monospace;font-size:13px;line-height:normal;outline:none;resize:none;overflow-y:hidden;}"
   +"#aiChatInput:focus{border-color:var(--main);}"
   // Delade sök-/omformuleringsknappar i sökraden (se markup vid dictRephraseBtn).
-  +".dict-split-btns{display:flex;gap:2px;width:40px;flex:0 0 40px;align-self:stretch;}"
+  +".dict-split-btns{display:flex;gap:2px;width:60px;flex:0 0 60px;align-self:stretch;}"
   +".dict-split-btns .action-btn{flex:1 1 0;min-width:0;padding:0;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;}"
   +".lashjalp-result{background:var(--bg-alt);border:1px solid var(--border);border-radius:6px;padding:12px 14px;color:var(--text);font-size:13.5px;min-height:20px;}"
   +".lashjalp-result:empty{display:none;}"
   +"#lashjalpCloseBtn:focus,#lashjalpBtn:focus,#lashjalpTransBtn:focus,#lashjalpOrdBtn:focus,"
   +"#lashjalpSettingsBtn:focus,#lashjalpSettingsCloseBtn:focus,#lashjalpSettingsCancelBtn:focus,#lashjalpSettingsSaveBtn:focus,"
-  +"#lashjalpHistoryBtn:focus,#lashjalpHistoryCloseBtn:focus,#lashjalpHistoryShortcutBtn:focus,#lashjalpDropupToggleBtn:focus,"
+  +"#lashjalpHistoryBtn:focus,#lashjalpHistoryCloseBtn:focus,#lashjalpHistoryShortcutBtn:focus,"
   +"#aiChatBtn:focus,#aiChatCloseBtn:focus,#aiChatSendBtn:focus,#aiChatCameraBtn:focus,#aiChatSnapBtn:focus,#aiChatCloseCameraBtn:focus,"
   +"#aiChatPersonaInput:focus,#aiChatRoleSelect:focus,#aiChatRoleNameInput:focus,#aiChatRoleSaveBtn:focus,#aiChatRoleDeleteBtn:focus,#aiChatRoleNewBtn:focus,#aiChatRoleEditBtn:focus,#aiChatRoleCancelBtn:focus,"
   +"#aiChatSettingsBtn:focus,#lashjalpSettingsAiCommentAddBtn:focus"
@@ -156,10 +154,6 @@ var LASHJALP_CSS = ""
   +".ai-chat-msg-edit-actions{display:flex;gap:8px;margin-top:4px;}"
   +".ai-chat-msg-edit-actions .action-btn,.ai-chat-msg-edit-actions .abtn{padding:6px 14px;font-size:12.5px;}"
   +".lashjalp-panel .abtn{padding:8px 18px;}"
-  +".lashjalp-dropup{position:relative;}"
-  +".lashjalp-dropup-menu{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);min-width:190px;flex-direction:column;padding:4px;z-index:60;}"
-  +".lashjalp-dropup-item{background:none;border:none;color:var(--text);text-align:left;padding:8px 10px;border-radius:5px;font-family:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;}"
-  +".lashjalp-dropup-item:hover,.lashjalp-dropup-item:focus{background:var(--bg-alt);outline:none;}"
   +".lashjalp-history-item{background:var(--bg-alt);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;color:var(--text);}"
   +".lashjalp-history-header-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}"
   +".lashjalp-history-title{color:var(--text-bright);font-size:14.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}"
@@ -222,6 +216,9 @@ function injectSokbarMarkup(){
     +'<div class="dict-split-btns">'
     +'<button class="action-btn" id="dictRephraseBtn" type="button" title="Omformulera: AI föreslår andra sätt att formulera ordet/frasen">✨</button>'
     +'<button class="action-btn" id="dictSpellBtn" type="button" title="Stavningskontroll">🔤</button>'
+    // NYTT (2026-11-23): Ord-rutan är borttagen. Ordbok/synonymer (samma funktion som Ord-rutan
+    // hade, searchSynonym) slås nu upp för texten i Sök-rutan med denna knapp.
+    +'<button class="action-btn" id="dictSynBtn" type="button" title="Ordbok: betydelse och synonymer för ordet i Sök">📚</button>'
     +'</div>'
     +'</div>'
     // NYTT (2026-09-02): krympordningen var omvänd mot vad Blå ville ha — Ord-rutan
@@ -230,14 +227,12 @@ function injectSokbarMarkup(){
     // så Ord tar nästan all krympning själv tills den når sin min-width — uppmätt (canvas
     // measureText på "Ord" + knappens faktiska bredd + gap) till ca 107px, ~108px med
     // liten marginal. Först när Ord är nere på det måttet börjar Sök krympa på riktigt.
-    +'<div class="dict-input-row dict-row-small" style="flex:0 25 130px;min-width:108px">'
-    +'<input type="text" id="synInput" placeholder="Ord">'
-    +'<div class="lashjalp-dropup" id="lashjalpDropupWrap">'
-    +'<button class="action-btn" id="lashjalpDropupToggleBtn" type="button" title="Läshjälp / Sparade sökningar" aria-haspopup="true" aria-expanded="false" style="padding:6px 12px;font-size:11.5px;flex:0 0 auto">📖 ▾</button>'
-    +'<div class="lashjalp-dropup-menu" id="lashjalpDropupMenu" role="menu">'
-    +'<button type="button" class="lashjalp-dropup-item" id="lashjalpBtn" role="menuitem">📖 Läshjälp</button>'
-    +'<button type="button" class="lashjalp-dropup-item" id="lashjalpHistoryShortcutBtn" role="menuitem">👓 Sparade sökningar</button>'
-    +'</div>'
+    +'<div class="dict-input-row dict-row-small" style="flex:0 0 auto">'
+    // NYTT (2026-11-23): dropup-menyn (📖 ▾) är borttagen. Läshjälp och Sparade sökningar är nu
+    // två direkta knappar i samma format som ✨/🔤/📚 (id:n och onclick-bindning oförändrade).
+    +'<div class="dict-split-btns" style="width:40px;flex:0 0 40px">'
+    +'<button class="action-btn" id="lashjalpBtn" type="button" title="Läshjälp: översättning och ordboksuppslag">📖</button>'
+    +'<button class="action-btn" id="lashjalpHistoryShortcutBtn" type="button" title="Sparade sökningar">👓</button>'
     +'</div>'
     +'</div>'
     +'</div>'
@@ -252,15 +247,15 @@ function injectSokbarMarkup(){
     +'<button type="button" id="lashjalpCloseBtn" class="action-btn" title="Stäng (Esc)">✕ Stäng</button>'
     +'</div>'
     +'</div>'
-    +'<div class="lashjalp-hint">Tab/Skift+Tab för att flytta dig, Esc för att stänga.</div>'
+    +'<div class="lashjalp-hint">Tab/Skift+Tab för att flytta dig, Esc för att stänga. Skift+Enter skickar, Enter ger ny rad.</div>'
     +'<div class="lashjalp-section">'
     +'<div class="lbl">Översättning</div>'
     +'<div class="lashjalp-row">'
-    +'<textarea id="lashjalpTransInput" placeholder="Text att översätta (Enter för att översätta, Skift+Enter för radbrytning)" rows="3"></textarea>'
+    +'<textarea id="lashjalpTransInput" placeholder="Text att översätta (Skift+Enter för att översätta, Enter för ny rad)" rows="3"></textarea>'
     +'</div>'
     +'<div class="lashjalp-row">'
-    +'<input type="text" id="lashjalpTransFromInput" placeholder="Från (t.ex. engelska) - tomt = identifieras automatiskt">'
-    +'<input type="text" id="lashjalpTransToInput" placeholder="Till (tomt = svenska)">'
+    +'<input type="text" id="lashjalpTransFromInput" placeholder="Från (t.ex. engelska) - tomt = identifieras automatiskt (Skift+Enter översätter)">'
+    +'<input type="text" id="lashjalpTransToInput" placeholder="Till (tomt = svenska, Skift+Enter översätter)">'
     +'</div>'
     +'<div class="lashjalp-row">'
     +'<button type="button" id="lashjalpTransBtn" class="action-btn">Översätt</button>'
@@ -270,7 +265,7 @@ function injectSokbarMarkup(){
     +'<div class="lashjalp-section">'
     +'<div class="lbl">Ordbok / synonymer</div>'
     +'<div class="lashjalp-row">'
-    +'<input type="text" id="lashjalpOrdInput" placeholder="Ord (Enter för att söka)">'
+    +'<textarea id="lashjalpOrdInput" class="lashjalp-grow" rows="1" placeholder="Ord (Skift+Enter för att söka, Enter för ny rad)"></textarea>'
     +'<button type="button" id="lashjalpOrdBtn" class="action-btn">Sök</button>'
     +'</div>'
     +'<div class="lashjalp-result" id="lashjalpOrdResult"></div>'
@@ -297,7 +292,7 @@ function injectSokbarMarkup(){
     +'</div>'
     +'<div class="lashjalp-hint" id="lashjalpSettingsStatus" style="margin:0 0 10px"></div>'
     +'<div class="lashjalp-row" id="lashjalpSettingsAiCommentRow" style="display:none">'
-    +'<input type="text" id="lashjalpSettingsAiCommentInput" placeholder="Lägg till en kommentar (hamnar högst upp i ai.json - redigera/ta bort direkt i JSON-texten nedan)">'
+    +'<textarea id="lashjalpSettingsAiCommentInput" class="lashjalp-grow" rows="1" placeholder="Lägg till en kommentar (Skift+Enter lägger till, Enter ger ny rad). Hamnar högst upp i ai.json - redigera/ta bort direkt i JSON-texten nedan"></textarea>'
     +'<button type="button" id="lashjalpSettingsAiCommentAddBtn" class="action-btn">Lägg till</button>'
     +'</div>'
     +'<div class="lashjalp-row">'
@@ -727,7 +722,7 @@ function renderSynResultBox(){
   bindChatContinuation(synResult,"synai","Du ar en svensk assistent for ordbok och synonymer. Fortsätt hjälpa personen bygga vidare på det ni just pratat om, svara med vanlig text.",function(){return synChat;},renderSynResultBox);
 }
 async function searchSynonym(){
-  var synInput=document.getElementById("synInput");
+  var synInput=document.getElementById("dictInput"); // Ord-rutan finns inte längre: ordet hämtas från Sök-rutan
   var synResult=document.getElementById("synResult");
   if(!synInput||!synResult)return;
   var word=synInput.value.trim();
@@ -792,70 +787,14 @@ async function searchSynonym(){
 // lämnar tillbaka fokus dit den kom ifrån. Se initLashjalp() för bindningarna.
 var lashjalpLastFocus=null;
 
-// ---- Läshjälp/historik: dropup-meny (📖 ▾) ----
-// (2026-08-31) 👓 och 📖 var tidigare två separata knappar i sökradens smala rad, vilket
-// på smala skärmar fick dem att flyta ihop (se Blås skärmdump). Nu är de EN knapp som
-// öppnar en liten meny UPPÅT ("dropup" - samma idé som en dropdown, fast öppnas uppåt
-// eftersom knappen sitter längst ner på skärmen, i sökraden). Menyknapparna har kvar
-// sina gamla id:n (lashjalpBtn/lashjalpHistoryShortcutBtn) och onclick-bindning
-// (openLashjalp/openLashjalpHistoryDirect, se initLashjalp() längre ner) - bara
-// omslutningen runt dem är ny, se initLashjalpDropup().
-function closeLashjalpDropup(){
-  var menu=document.getElementById("lashjalpDropupMenu");
-  var toggleBtn=document.getElementById("lashjalpDropupToggleBtn");
-  if(menu)menu.style.display="none";
-  if(toggleBtn)toggleBtn.setAttribute("aria-expanded","false");
-}
-function openLashjalpDropup(){
-  var menu=document.getElementById("lashjalpDropupMenu");
-  var toggleBtn=document.getElementById("lashjalpDropupToggleBtn");
-  if(!menu)return;
-  menu.style.display="flex";
-  if(toggleBtn)toggleBtn.setAttribute("aria-expanded","true");
-  var firstItem=menu.querySelector(".lashjalp-dropup-item");
-  if(firstItem)firstItem.focus();
-}
-// Klickar man på 📖/👓 inuti dropup-menyn döljs menyn (display:none) direkt efteråt -
-// att då spara document.activeElement rakt av (den dolda menyknappen) skulle göra att
-// fokus INTE kan återställas dit när Läshjälp/historiken stängs (att fokusera ett dolt
-// element fungerar inte tillförlitligt). Denna hjälpfunktion pekar om till den synliga
-// dropup-knappen i så fall, annars beter den sig som document.activeElement som förut
-// (t.ex. vid Tab-navigering rakt till knappen, utan att öppna menyn).
-function lashjalpCaptureReturnFocus(){
-  var active=document.activeElement;
-  var dropupMenu=document.getElementById("lashjalpDropupMenu");
-  if(dropupMenu&&dropupMenu.contains(active)){
-    var toggleBtn=document.getElementById("lashjalpDropupToggleBtn");
-    if(toggleBtn)return toggleBtn;
-  }
-  return active;
-}
-function initLashjalpDropup(){
-  var toggleBtn=document.getElementById("lashjalpDropupToggleBtn");
-  var menu=document.getElementById("lashjalpDropupMenu");
-  var wrap=document.getElementById("lashjalpDropupWrap");
-  if(!toggleBtn||!menu||!wrap)return;
-  toggleBtn.onclick=function(){
-    if(menu.style.display==="flex")closeLashjalpDropup();
-    else openLashjalpDropup();
-  };
-  sokbarDocListen("mousedown",function(e){
-    if(menu.style.display==="flex"&&!wrap.contains(e.target))closeLashjalpDropup();
-  });
-  menu.addEventListener("keydown",function(e){
-    if(e.key==="Escape"){
-      e.preventDefault();
-      closeLashjalpDropup();
-      toggleBtn.focus();
-    }
-  });
-}
+// ---- Läshjälp/historik ----
+// (2026-11-23) Dropup-menyn är borttagen: 📖 (Läshjälp) och 👓 (Sparade sökningar) är direkta
+// knappar i sökraden. Fokus återställs till knappen man klickade på när fönstret stängs.
 
 function openLashjalp(){
   var overlay=document.getElementById("lashjalpOverlay");
   if(!overlay)return;
-  lashjalpLastFocus=lashjalpCaptureReturnFocus();
-  closeLashjalpDropup();
+  lashjalpLastFocus=document.activeElement;
   overlay.style.display="flex";
   document.body.style.overflow="hidden";
   var firstField=document.getElementById("lashjalpTransInput");
@@ -975,6 +914,7 @@ async function lashjalpSettingsAddAiComment(){
   var ok=await driveWriteJson(LASHJALP_FOLDER,LASHJALP_FILES.ai,rebuilt);
   if(ok){
     input.value="";
+    input.style.height="";
     // loadLashjalpSettingsFile() nollställer lashjalpSettingsMsg direkt när den körs
     // (för att visa "Laddar …" korrekt i vanliga fallet) - vänta därför in den FÖRST,
     // annars hinner bekräftelsetexten aldrig synas.
@@ -1253,8 +1193,7 @@ async function lashjalpHistoryDeleteConfirmed(idx){
 function openLashjalpHistoryDirect(){
   var overlay=document.getElementById("lashjalpOverlay");
   if(!overlay)return;
-  lashjalpLastFocus=lashjalpCaptureReturnFocus();
-  closeLashjalpDropup();
+  lashjalpLastFocus=document.activeElement;
   document.body.style.overflow="hidden";
   overlay.style.display="none";
   openLashjalpHistory();
@@ -2065,13 +2004,10 @@ function initAiChat(){
 }
 
 function initLashjalp(){
-  initLashjalpDropup();
-
   var lashjalpBtn=document.getElementById("lashjalpBtn");
   if(lashjalpBtn)lashjalpBtn.onclick=openLashjalp;
 
-  // Genvägsknapp (👓) - nu inuti dropup-menyn tillsammans med 📖, se
-  // openLashjalpHistoryDirect() ovan och initLashjalpDropup() för själva menyn.
+  // Genvägsknapp (👓) i sökraden, bredvid 📖, se openLashjalpHistoryDirect() ovan.
   var historyShortcutBtn=document.getElementById("lashjalpHistoryShortcutBtn");
   if(historyShortcutBtn)historyShortcutBtn.onclick=openLashjalpHistoryDirect;
 
@@ -2108,24 +2044,29 @@ function initLashjalp(){
   });
 
   var transInput=document.getElementById("lashjalpTransInput");
+  // NYTT (2026-11-23): i hela Läshjälp gäller Skift+Enter = skicka/sök/lägg till, Enter = ny rad
+  // (i enradiga fält, som språkfälten, gör Enter ingenting).
   if(transInput)transInput.onkeydown=function(e){
-    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();lashjalpTranslate();}
+    if(e.key==="Enter"&&e.shiftKey){e.preventDefault();lashjalpTranslate();}
   };
   var transFromInput=document.getElementById("lashjalpTransFromInput");
   if(transFromInput)transFromInput.onkeydown=function(e){
-    if(e.key==="Enter"){e.preventDefault();lashjalpTranslate();}
+    if(e.key==="Enter"){e.preventDefault();if(e.shiftKey)lashjalpTranslate();}
   };
   var transToInput=document.getElementById("lashjalpTransToInput");
   if(transToInput)transToInput.onkeydown=function(e){
-    if(e.key==="Enter"){e.preventDefault();lashjalpTranslate();}
+    if(e.key==="Enter"){e.preventDefault();if(e.shiftKey)lashjalpTranslate();}
   };
   var transBtn=document.getElementById("lashjalpTransBtn");
   if(transBtn)transBtn.onclick=lashjalpTranslate;
 
   var ordInput=document.getElementById("lashjalpOrdInput");
-  if(ordInput)ordInput.onkeydown=function(e){
-    if(e.key==="Enter")lashjalpSearchWord();
-  };
+  if(ordInput){
+    ordInput.onkeydown=function(e){
+      if(e.key==="Enter"&&e.shiftKey){e.preventDefault();lashjalpSearchWord();}
+    };
+    sokbarGrow(ordInput);
+  }
   var ordBtn=document.getElementById("lashjalpOrdBtn");
   if(ordBtn)ordBtn.onclick=lashjalpSearchWord;
 
@@ -2145,9 +2086,12 @@ function initLashjalp(){
     var aiCommentAddBtn=document.getElementById("lashjalpSettingsAiCommentAddBtn");
     if(aiCommentAddBtn)aiCommentAddBtn.onclick=lashjalpSettingsAddAiComment;
     var aiCommentInput=document.getElementById("lashjalpSettingsAiCommentInput");
-    if(aiCommentInput)aiCommentInput.onkeydown=function(e){
-      if(e.key==="Enter"){e.preventDefault();lashjalpSettingsAddAiComment();}
-    };
+    if(aiCommentInput){
+      aiCommentInput.onkeydown=function(e){
+        if(e.key==="Enter"&&e.shiftKey){e.preventDefault();lashjalpSettingsAddAiComment();}
+      };
+      sokbarGrow(aiCommentInput);
+    }
 
     // Klick på den mörka bakgrunden stänger, precis som huvud-overlayet.
     settingsOverlay.addEventListener("mousedown",function(e){
@@ -2216,17 +2160,27 @@ function initLashjalp(){
   }
 }
 
+// Enradig textarea som växer med innehållet (max 140px). Bindas bara på input-händelsen, så den
+// är ofarlig att anropa medan överlägget är dolt. Nollställs till en rad när fältet töms (t.ex. efter "Lägg till").
+function sokbarGrow(ta){
+  if(!ta)return;
+  var fit=function(){ta.style.height="auto";ta.style.height=Math.min(ta.scrollHeight+2,140)+"px";};
+  ta.addEventListener("input",fit);
+}
+
 function initDictBar(){
+  // Sök-rutan har en enda inmatning: Enter = Sök, 🔤/✨ = stavning/omformulera, 📚 = ordbok.
+  // Resultatrutorna ligger ovanpå varandra, så den som inte används döljs när en annan öppnas.
+  var hideBox=function(id){var b=document.getElementById(id);if(b)b.classList.remove("visible");};
   var dictInput=document.getElementById("dictInput");
-  if(dictInput)dictInput.onkeydown=function(e){if(e.key==="Enter")searchDictionary();};
+  if(dictInput)dictInput.onkeydown=function(e){if(e.key==="Enter"){hideBox("synResult");searchDictionary();}};
 
   var dictSpellBtn=document.getElementById("dictSpellBtn");
-  if(dictSpellBtn)dictSpellBtn.onclick=checkSpelling;
+  if(dictSpellBtn)dictSpellBtn.onclick=function(){hideBox("synResult");checkSpelling();};
   var dictRephraseBtn=document.getElementById("dictRephraseBtn");
-  if(dictRephraseBtn)dictRephraseBtn.onclick=rephraseDictInput;
-
-  var synInput=document.getElementById("synInput");
-  if(synInput)synInput.onkeydown=function(e){if(e.key==="Enter")searchSynonym();};
+  if(dictRephraseBtn)dictRephraseBtn.onclick=function(){hideBox("synResult");rephraseDictInput();};
+  var dictSynBtn=document.getElementById("dictSynBtn");
+  if(dictSynBtn)dictSynBtn.onclick=function(){hideBox("dictResult");searchSynonym();};
 
   initLashjalp();
   initAiChat();
@@ -2239,8 +2193,7 @@ function initDictBar(){
       dr.classList.remove("visible");
     }
     var sr=document.getElementById("synResult");
-    var si=document.getElementById("synInput");
-    if(sr&&sr.classList.contains("visible")&&!sr.contains(e.target)&&e.target!==si){
+    if(sr&&sr.classList.contains("visible")&&!sr.contains(e.target)&&e.target!==di&&!(e.target.closest&&e.target.closest(".dict-split-btns"))){
       sr.classList.remove("visible");
     }
   });
@@ -2264,7 +2217,7 @@ function initDictBar(){
     applyDictBarPadding();
   }
 
-  // Snabbkommandon: "/" -> sökrutan, "ctrl+/" (eller cmd+/ på Mac) -> Ordråd.
+  // Snabbkommando: "/" (eller ctrl+/) -> sökrutan. Ord-rutan är borttagen, ordbok = 📚-knappen.
   // Triggar bara nar man inte redan skriver i ett annat falt.
   sokbarDocListen("keydown",function(e){
     if(e.key!=="/")return;
@@ -2272,13 +2225,8 @@ function initDictBar(){
     var isEditable=tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"||(e.target&&e.target.isContentEditable);
     if(isEditable)return;
     e.preventDefault();
-    if(e.ctrlKey||e.metaKey){
-      var syn=document.getElementById("synInput");
-      if(syn){syn.focus();syn.select();}
-    } else {
-      var di=document.getElementById("dictInput");
-      if(di){di.focus();di.select();}
-    }
+    var di=document.getElementById("dictInput");
+    if(di){di.focus();di.select();}
   });
 
   // (Bild-/filuppladdning + kamera för sökraden borttagna 2026-08-31 - se AI-chatten,

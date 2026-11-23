@@ -107,9 +107,26 @@ async function skrivhjalpLoad() {
 }
 
 // ---- Inställningar (settings.json): vilka lägen som visas, deras emoji/namn/ordning ----
+// Underval (knapparna under ett läge): { label: "Rubrik", items: [{label, instr}] } eller null.
+function skrivhjalpCleanOpts(o) {
+  if (!o || !Array.isArray(o.items)) return null;
+  var items = [];
+  o.items.forEach(function (i) {
+    if (!i || typeof i.label !== "string") return;
+    var l = i.label.trim().slice(0, 30);
+    if (!l) return;
+    var ins = (typeof i.instr === "string" && i.instr.trim()) ? i.instr.trim().slice(0, 300) : l;
+    items.push({ label: l, instr: ins });
+  });
+  if (!items.length) return null;
+  return { label: (typeof o.label === "string" && o.label.trim()) ? o.label.trim().slice(0, 40) : "Välj", items: items };
+}
 function skrivhjalpCustomMode(s) {
-  return { id: s.id, custom: true, icon: s.e || "✨", label: s.label || "Eget läge", verb: s.label || "Kör",
+  var m = { id: s.id, custom: true, icon: s.e || "✨", label: s.label || "Eget läge", verb: s.label || "Kör",
     hint: "Egen instruktion: " + s.instr, placeholder: "Skriv eller klistra in texten...", instr: s.instr };
+  var o = skrivhjalpCleanOpts(s.opts);
+  if (o) m.opts = o;
+  return m;
 }
 function skrivhjalpBuildModes(saved) {
   if (!Array.isArray(saved) || !saved.length) return SKRIVHJALP_MODES.slice();
@@ -117,8 +134,16 @@ function skrivhjalpBuildModes(saved) {
   saved.forEach(function (s) {
     if (!s || !s.id) return;
     var base = SKRIVHJALP_MODES.find(function (x) { return x.id === s.id; });
-    if (base) out.push(Object.assign({}, base, { icon: s.e || base.icon, label: s.label || base.label,
-      verb: (s.label && s.label !== base.label) ? s.label : base.verb }));
+    if (base) {
+      var bm = Object.assign({}, base, { icon: s.e || base.icon, label: s.label || base.label,
+        verb: (s.label && s.label !== base.label) ? s.label : base.verb });
+      // Sparade underval ersätter standardvalen (även om de tagits bort helt); saknas nyckeln gäller standard.
+      if (Object.prototype.hasOwnProperty.call(s, "opts")) {
+        var co = skrivhjalpCleanOpts(s.opts);
+        if (co) bm.opts = co; else delete bm.opts;
+      }
+      out.push(bm);
+    }
     else if (s.instr) out.push(skrivhjalpCustomMode(s));
   });
   return out.length ? out : SKRIVHJALP_MODES.slice();
@@ -724,9 +749,12 @@ function skrivhjalpOpenEmojiPicker(onSelect) {
   function ov_close() { ov.close(); }
 }
 
+function skrivhjalpCopyOpts(o) {
+  return o ? { label: o.label, items: o.items.map(function (i) { return { label: i.label, instr: i.instr }; }) } : null;
+}
 function skrivhjalpOpenSettings() {
   var wModes = skrivhjalpModes.map(function (m) {
-    var o = { id: m.id, label: m.label, e: m.icon, custom: !!m.custom };
+    var o = { id: m.id, label: m.label, e: m.icon, custom: !!m.custom, opts: skrivhjalpCopyOpts(m.opts) };
     if (m.custom) o.instr = m.instr;
     return o;
   });
@@ -755,6 +783,24 @@ function skrivhjalpOpenSettings() {
         + "<button type='button' data-sh-remove='" + i + "' title='Ta bort' class='delbtn' style='font-size:13px'>×</button></span>";
     }).join("") + "</div>";
   }
+  function optsHtml(m) {
+    var o = m.opts || { label: "", items: [] };
+    return "<div class='lbl' style='margin-top:4px'>Underval för “" + esc(m.label) + "”</div>"
+      + "<div class='enote' style='margin-bottom:8px'>Knapparna som visas under rutan när läget är valt. Namnet visas på knappen, instruktionen går till AI.</div>"
+      + "<input class='inp w100' id='sh-opts-label' maxlength='40' value=\"" + esc(o.label) + "\" placeholder='Rubrik, t.ex. Hur mycket?' style='padding:7px 10px;font-size:13px;margin-bottom:8px'/>"
+      + o.items.map(function (it, i) {
+        return "<div style='display:flex;gap:6px;margin-bottom:6px;align-items:center'>"
+          + "<input class='inp' data-sh-ol='" + i + "' maxlength='30' value=\"" + esc(it.label) + "\" style='width:120px;flex:none;padding:7px 10px;font-size:13px'/>"
+          + "<input class='inp' data-sh-oi='" + i + "' maxlength='300' value=\"" + esc(it.instr) + "\" style='padding:7px 10px;font-size:13px'/>"
+          + "<button type='button' data-sh-oremove='" + i + "' title='Ta bort' class='delbtn' style='font-size:13px'>×</button></div>";
+      }).join("")
+      + "<div style='display:flex;gap:6px;margin-bottom:6px'>"
+      + "<input class='inp' id='sh-onew-label' maxlength='30' placeholder='Ny knapp, t.ex. Rolig' style='width:120px;flex:none;padding:7px 10px;font-size:13px'/>"
+      + "<input class='inp' id='sh-onew-instr' maxlength='300' placeholder='Instruktion till AI' style='padding:7px 10px;font-size:13px'/>"
+      + "<button type='button' class='chip' id='sh-onew-add' style='flex-shrink:0;padding:7px 12px;font-size:13px'>+</button></div>"
+      + (!m.custom && SKRIVHJALP_MODES.some(function (d) { return d.id === m.id && d.opts; })
+        ? "<div style='margin-bottom:10px'><button type='button' class='action-btn' id='sh-opts-reset'>↺ Standardval</button></div>" : "");
+  }
   function panelHtml() {
     var editing = editIdx !== null ? wModes[editIdx] : null;
     var miss = missingDefaults();
@@ -766,6 +812,7 @@ function skrivhjalpOpenSettings() {
       + (editing && editing.custom
         ? "<div class='lbl'>Instruktion till AI för “" + esc(editing.label) + "”</div><textarea class='ta' id='sh-edit-instr' maxlength='400' style='min-height:70px;margin-bottom:10px'>" + esc(editing.instr || "") + "</textarea>"
         : "")
+      + (editing ? optsHtml(editing) : "")
       + "<div class='lbl' style='margin-top:12px'>Nytt läge</div>"
       + "<div style='display:flex;gap:6px;margin-bottom:6px'>"
       + "<input class='inp' id='sh-new-emoji' readonly placeholder='🏷️' style='width:42px;flex:none;text-align:center;padding:7px 2px;font-size:13px;cursor:pointer'/>"
@@ -778,8 +825,19 @@ function skrivhjalpOpenSettings() {
   }
   // Skriver in det som står i redigeringsfälten i wModes utan att lämna redigeringsläget
   // (används innan emoji-väljaren öppnas, så ett nytt namn inte tappas när panelen ritas om).
+  function syncOpts() {
+    if (editIdx === null || !wModes[editIdx] || !body.querySelector("#sh-opts-label")) return;
+    var items = [];
+    body.querySelectorAll("[data-sh-ol]").forEach(function (inp) {
+      var l = inp.value.trim();
+      var ins = body.querySelector("[data-sh-oi='" + inp.dataset.shOl + "']");
+      if (l) items.push({ label: l, instr: (ins && ins.value.trim()) || l });
+    });
+    wModes[editIdx].opts = { label: body.querySelector("#sh-opts-label").value.trim() || "Välj", items: items };
+  }
   function syncEditFields() {
     if (editIdx === null || !wModes[editIdx]) return;
+    syncOpts();
     var l = body.querySelector("#sh-edit-label");
     if (l && l.value.trim()) wModes[editIdx].label = l.value.trim();
     var ins = body.querySelector("#sh-edit-instr");
@@ -787,6 +845,7 @@ function skrivhjalpOpenSettings() {
   }
   function commitEdit() {
     if (editIdx === null) return;
+    syncOpts();
     var l = body.querySelector("#sh-edit-label");
     if (l && wModes[editIdx]) wModes[editIdx].label = l.value.trim() || wModes[editIdx].label;
     var ins = body.querySelector("#sh-edit-instr");
@@ -810,6 +869,17 @@ function skrivhjalpOpenSettings() {
         paint();
       });
     });
+  }
+  function addOpt() {
+    var l = body.querySelector("#sh-onew-label"), i = body.querySelector("#sh-onew-instr");
+    if (!l) return false;
+    var label = l.value.trim();
+    if (!label) return false;
+    syncOpts();
+    var m = wModes[editIdx];
+    if (!m.opts) m.opts = { label: "Välj", items: [] };
+    m.opts.items.push({ label: label, instr: i.value.trim() || label });
+    return true;
   }
   function paint() {
     body.innerHTML = panelHtml();
@@ -845,6 +915,31 @@ function skrivhjalpOpenSettings() {
         paint();
       };
     });
+    var oadd = body.querySelector("#sh-onew-add");
+    if (oadd) {
+      oadd.onclick = function () {
+        if (!addOpt()) { body.querySelector("#sh-msg").textContent = "Skriv ett namn på knappen."; return; }
+        msg = ""; paint();
+        var nl = body.querySelector("#sh-onew-label"); if (nl) nl.focus();
+      };
+      body.querySelector("#sh-onew-label").onkeydown = function (e) { if (e.key === "Enter") oadd.onclick(); };
+      body.querySelector("#sh-onew-instr").onkeydown = function (e) { if (e.key === "Enter") oadd.onclick(); };
+    }
+    body.querySelectorAll("[data-sh-oremove]").forEach(function (b) {
+      b.onclick = function () {
+        syncOpts();
+        var m = wModes[editIdx];
+        m.opts.items.splice(Number(b.dataset.shOremove), 1);
+        paint();
+      };
+    });
+    var oreset = body.querySelector("#sh-opts-reset");
+    if (oreset) oreset.onclick = function () {
+      syncEditFields();
+      var d = SKRIVHJALP_MODES.find(function (x) { return x.id === wModes[editIdx].id; });
+      wModes[editIdx].opts = skrivhjalpCopyOpts(d && d.opts);
+      paint();
+    };
     var conf = body.querySelector("#sh-edit-confirm");
     if (conf) conf.onclick = function () { commitEdit(); paint(); };
     var el = body.querySelector("#sh-edit-label");
@@ -862,7 +957,7 @@ function skrivhjalpOpenSettings() {
       var instr = body.querySelector("#sh-new-instr").value.trim();
       if (!label || !instr) { body.querySelector("#sh-msg").textContent = "Skriv både ett namn och en instruktion till AI."; return; }
       commitEdit();
-      wModes.push({ id: slugify(label), label: label, e: ne.value.trim() || "✨", custom: true, instr: instr });
+      wModes.push({ id: slugify(label), label: label, e: ne.value.trim() || "✨", custom: true, instr: instr, opts: null });
       msg = "";
       paint();
     }
@@ -872,16 +967,17 @@ function skrivhjalpOpenSettings() {
     var restore = body.querySelector("#sh-restore");
     if (restore) restore.onclick = function () {
       commitEdit();
-      missingDefaults().forEach(function (d) { wModes.push({ id: d.id, label: d.label, e: d.icon, custom: false }); });
+      missingDefaults().forEach(function (d) { wModes.push({ id: d.id, label: d.label, e: d.icon, custom: false, opts: skrivhjalpCopyOpts(d.opts) }); });
       paint();
     };
   }
   async function save() {
+    if (editIdx !== null && addOpt()) paint();  // ny knapp som skrivits men inte bekräftats med +
     commitEdit();
     if (skrivhjalpSettingsReadFailed) return;
     if (!wModes.length) { msg = "Du måste ha minst ett läge kvar."; paint(); return; }
     var saved = wModes.map(function (m) {
-      var o = { id: m.id, label: m.label, e: m.e };
+      var o = { id: m.id, label: m.label, e: m.e, opts: skrivhjalpCleanOpts(m.opts) };
       if (m.custom) o.instr = m.instr;
       return o;
     });
