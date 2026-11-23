@@ -1,7 +1,6 @@
-=== Start 2026-11-23 11:22:16,09 === 
+=== Start 2026-11-23 11:50:42,18 === 
 git version 2.56.1.windows.1
 Reset branch 'main'
 M	js/skrivhjalp.js
-M	js/sokbar.js
 M	ladda_upp_logg.txt
 Your branch is up to date with 'origin/main'.
