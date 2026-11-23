@@ -1,4 +1,4 @@
-=== Start 2026-11-23 11:50:42,18 === 
+=== Start 2026-11-23 12:16:42,33 === 
 git version 2.56.1.windows.1
 Reset branch 'main'
 M	js/skrivhjalp.js

@@ -251,12 +251,12 @@ function skrivhjalpMode(id) {
   return skrivhjalpModes.find(function (m) { return m.id === id; }) || skrivhjalpModes[0];
 }
 // Valda underval för ett läge: flera kan vara valda, och tryck på ett valt tar bort det.
-// Orört läge (inget sparat i utkastet) har första valet förvalt; efter första trycket gäller exakt det man valt.
+// Inget är förvalt: tryck väljer, nytt tryck avmarkerar.
 function skrivhjalpOptSel(m) {
   if (!m.opts) return [];
   var v = skrivhjalpDraft.opts[m.id];
   if (typeof v === "number") v = [v];
-  if (!Array.isArray(v)) return [0];
+  if (!Array.isArray(v)) return [];
   return v.filter(function (i, k) { return typeof i === "number" && i >= 0 && i < m.opts.items.length && v.indexOf(i) === k; })
     .sort(function (a, b) { return a - b; });
 }
