@@ -631,15 +631,20 @@ async function spellRephrase(text,btn){
   out.innerHTML="<span class='spnr' style='width:14px;height:14px;border-width:2px;display:inline-block;margin:0 6px 0 0;vertical-align:middle'></span>omformulerar …";
   var alts=await rephraseFetchAlternatives(text);
   btn.disabled=false;
-  out.innerHTML=rephraseAlternativesHtml(alts);
+  rephraseMountBlock(out,text,alts);
 }
 
 // Gemensam hämtning av omformuleringar (används av både knappen i stavningsresultatet och
 // den fristående ✨-knappen i sökraden). Returnerar en lista med förslag, eller null om
 // AI:n inte gav ett användbart svar efter två försök.
-async function rephraseFetchAlternatives(text){
+async function rephraseFetchAlternatives(text,avoid){
   var sys='Du ar en svensk sprakkonsulent. Personen har sokt pa ett ord eller en fras. Ge 4 olika omformuleringar. Ar texten ett enskilt ord: ge alternativa ord med samma betydelse. Ar det en fras eller mening: ge omformuleringar som behaller betydelsen men varierar ordval och uppbyggnad. Ratta eventuella felstavningar tyst i forslagen. Svara ENDAST med JSON, utan markdown-block: {"alternativ":["forslag 1","forslag 2","forslag 3","forslag 4"]}.';
   var userMsg="Omformulera:\n\n"+text;
+  // NYTT (2026-11-23): "➕ Fler förslag" skickar med allt som redan visats så att AI:n ger NYA, andra förslag.
+  if(avoid&&avoid.length){
+    userMsg+="\n\nDu har redan gett dessa forslag. Ge 4 NYA forslag som skiljer sig tydligt fran dem, upprepa inga av dem:\n"
+      +avoid.map(function(a){return "- "+a;}).join("\n");
+  }
   var parsed=null,lastErr=null;
   for(var attempt=0;attempt<2&&!parsed;attempt++){
     try{
@@ -660,6 +665,57 @@ function rephraseAlternativesHtml(alts){
   }).join("")+"</div>";
 }
 
+// NYTT (2026-11-23): visar förslagen i en lista och lägger en "➕ Fler förslag"-knapp under. Varje
+// tryck hämtar en NY omgång (AI:n får veta vad som redan visats, och dubbletter filtreras bort
+// här också) som läggs till UNDER de tidigare - den första omgången ligger kvar. Går att
+// upprepa tills man är nöjd. "alts" är första omgången (eller null om hämtningen misslyckades).
+function rephraseMountBlock(out,text,alts){
+  if(!out)return;
+  if(!alts){out.innerHTML=rephraseAlternativesHtml(null);return;}
+  out.innerHTML="";
+  var all=[];
+  var list=document.createElement("div");
+  list.style.cssText="display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow-y:auto";
+  var moreBtn=document.createElement("button");
+  moreBtn.type="button";moreBtn.className="action-btn";moreBtn.textContent="➕ Fler förslag";
+  moreBtn.title="Be AI om fler, andra förslag (de som redan visats ligger kvar)";
+  moreBtn.style.marginTop="10px";
+  var note=document.createElement("div");
+  note.style.cssText="margin-top:8px;color:var(--sub);font-size:12px;min-height:0";
+  function addBatch(batch,isFirst){
+    if(!isFirst){
+      var hr=document.createElement("div");
+      hr.style.cssText="border-top:1px solid var(--border);margin:4px 0";
+      list.appendChild(hr);
+    }
+    batch.forEach(function(a){
+      var row=document.createElement("div");
+      row.style.cssText="font-size:13.5px;color:var(--text)";
+      row.textContent="• "+String(a);
+      list.appendChild(row);
+      all.push(String(a));
+    });
+    list.scrollTop=list.scrollHeight;
+  }
+  addBatch(alts,true);
+  moreBtn.onclick=async function(){
+    moreBtn.disabled=true;
+    note.textContent="hämtar fler förslag …";
+    var extra=await rephraseFetchAlternatives(text,all);
+    if(!out.contains(moreBtn))return; // rutan hann stängas/ritas om
+    moreBtn.disabled=false;
+    if(!extra){note.textContent="Kunde inte hämta fler förslag, försök igen.";return;}
+    var seen={};all.forEach(function(a){seen[a.trim().toLowerCase()]=true;});
+    var fresh=extra.filter(function(a){var k=String(a).trim().toLowerCase();if(!k||seen[k])return false;seen[k]=true;return true;});
+    if(!fresh.length){note.textContent="Inga nya förslag hittades, försök igen.";return;}
+    note.textContent="";
+    addBatch(fresh,false);
+  };
+  out.appendChild(list);
+  out.appendChild(moreBtn);
+  out.appendChild(note);
+}
+
 // Fristående omformulering från ✨-knappen i sökraden - ingen stavningskontroll först.
 // Resultatet visas i samma ruta (dictResult) som Sök/stavning, med ✕ för att stänga.
 async function rephraseDictInput(){
@@ -674,7 +730,8 @@ async function rephraseDictInput(){
   dictResult.innerHTML="<button class='dict-close' id='dictCloseBtn'>×</button>"
     +"<span class='note-label'>Omformulering</span>"
     +"<div style='margin:6px 0 8px;color:var(--sub);font-size:12px'>"+esc(text)+"</div>"
-    +rephraseAlternativesHtml(alts);
+    +"<div id='dictRephraseOut'></div>";
+  rephraseMountBlock(document.getElementById("dictRephraseOut"),text,alts);
   document.getElementById("dictCloseBtn").onclick=function(){dictResult.classList.remove("visible");};
 }
 
